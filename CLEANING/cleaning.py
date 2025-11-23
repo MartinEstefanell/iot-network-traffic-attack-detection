@@ -11,6 +11,7 @@ os.makedirs(CHECKPOINTS_DIR, exist_ok=True)
 
 OUTPUT_NAME = "clean_dataset_RT-IoT2022.csv"
 OUTPUT_PATH = os.path.join(os.path.dirname(THIS_DIR), OUTPUT_NAME)
+FINAL_DROP_COLUMNS = {"attack_type", "is_attack"}
 def find_input_csv_arg_or_first() -> str:
     if len(sys.argv) > 1:
         return sys.argv[1]
@@ -94,6 +95,34 @@ def _nan_to_none(obj):
         return [_nan_to_none(v) for v in obj]
     return obj
 
+def finalize_dataset(df: pd.DataFrame) -> tuple[pd.DataFrame, Dict[str, Any]]:
+    """
+    Ajustes finales previos a exportar:
+      - Imputa Attack_type nulo o vacío con 'Unknown'.
+      - Elimina columnas auxiliares (attack_type en minúsculas, is_attack, columnas Unnamed).
+    """
+    report: Dict[str, Any] = {"attack_type_imputed": 0, "dropped_columns": []}
+
+    if "Attack_type" in df.columns:
+        col = df["Attack_type"]
+        is_null = col.isna()
+        is_empty = col.astype(str).str.strip().eq("") & ~is_null
+        mask = is_null | is_empty
+        report["attack_type_imputed"] = int(mask.sum())
+        if mask.any():
+            df.loc[mask, "Attack_type"] = "Unknown"
+
+    drop_candidates = [c for c in FINAL_DROP_COLUMNS if c in df.columns]
+    drop_candidates += [
+        c for c in df.columns
+        if isinstance(c, str) and c.lower().startswith("unnamed")
+    ]
+    drop_cols = sorted(set(drop_candidates))
+    if drop_cols:
+        df = df.drop(columns=drop_cols, errors="ignore")
+    report["dropped_columns"] = drop_cols
+    return df, report
+
 def main():
     input_csv = find_input_csv_arg_or_first()
     print(f"[cleaning] Leyendo: {os.path.relpath(input_csv, THIS_DIR)}")
@@ -116,6 +145,13 @@ def main():
         # checkpoint por módulo
         ckpt = os.path.join(CHECKPOINTS_DIR, f"{name}.csv.gz")
         cur.to_csv(ckpt, index=False, compression="gzip")
+
+    cur, final_report = finalize_dataset(cur)
+    reports["finalize"] = final_report
+    if final_report.get("attack_type_imputed"):
+        print(f"[cleaning] Attack_type imputado con 'Unknown' en {final_report['attack_type_imputed']} filas")
+    if final_report.get("dropped_columns"):
+        print(f"[cleaning] Columnas eliminadas antes de exportar: {', '.join(final_report['dropped_columns'])}")
 
     # guardar CSV final en carpeta padre
     cur.to_csv(OUTPUT_PATH, index=False)

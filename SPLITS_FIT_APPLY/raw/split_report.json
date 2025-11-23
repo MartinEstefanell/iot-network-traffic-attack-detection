@@ -1,0 +1,21 @@
+{
+  "split": {
+    "rows_total": 111003,
+    "rows_labeled": 105433,
+    "rows_unknown": 5570,
+    "train": {
+      "rows": 84346,
+      "is_attack_counts": {
+        "1": 74833,
+        "0": 9513
+      }
+    },
+    "test": {
+      "rows": 21087,
+      "is_attack_counts": {
+        "1": 18709,
+        "0": 2378
+      }
+    }
+  }
+}
